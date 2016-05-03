@@ -6,6 +6,7 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import javax.imageio.ImageIO;
 import org.opencv.core.Mat;
@@ -52,7 +53,7 @@ public class Imagen {
 
         //Crea la carpeta donde alojar las imagenes
         this.nombreCarpeta = nombreCarpeta;
-        File carpeta = new File("nombreCarpeta");
+        File carpeta = new File(nombreCarpeta);
         if (carpeta.mkdir()) {
             Mat imgAux = new Mat();
             //Convertir la imagen en escala de grises a binario
@@ -74,46 +75,54 @@ public class Imagen {
             if (!contornos.isEmpty()) {
                 SB.append("Se han encontrado ").append(contornos.size()).append(" contornos -");
 
-                //Buscar la segunda area mayor para descartar algunos casos bordes que son muy pequeños
-                double areaMayor = 0;
-                double areaMayor2 = 0;
+                double areaProm =0;
                 for (int i = 0; i < contornos.size(); i++) {
                     contorno = boundingRect(contornos.get(i));
-                    if (areaMayor < contorno.area()) {
-                        areaMayor2 = areaMayor;
-                        areaMayor = contorno.area();
-
-                    }
+                    areaProm+=contorno.area();
                 }
+
                 //Asigna que para ser un contorno valido debe ser mayor al 10% del segundo mayor
-                areaMayor2 *= 0.10;
-                int cont = 0;
-                
+                areaProm = (areaProm/contornos.size())*0.25;
+                ArrayList<Rect> contornosFiltrados = new ArrayList<>();
+
                 //Guarda las letras detectadas
                 for (int i = 0; i < contornos.size(); i++) {
 
                     contorno = boundingRect(contornos.get(i));
                     //Verifica que supere el limite
-                    if (contorno.area() > areaMayor2) {
-                        //Guarda la imagen
-                        this.guardarImagen(new Mat(imagen, contorno), i);
-                        cont++;
+                    if (contorno.area() > areaProm) {
+                        contornosFiltrados.add(contorno);
                     }
                 }
-                //Marca los rectangulos en la imagen
-                for (int i = 0; i < contornos.size(); i++) {
+                //Ordeno los contornos de mayor a menor
+                Mergesort merge = new Mergesort(contornosFiltrados);
+                merge.ordenar();
+                contornosFiltrados = merge.getV();
 
-                    contorno = boundingRect(contornos.get(i));
-                    //Verifica que supere el limite
-                    if (contorno.area() > areaMayor2) {
-                        //La marca en la imagen principal
-                        rectangle(imagen, new Point(contorno.x, contorno.y), new Point(contorno.x + contorno.width,
-                                contorno.y + contorno.height), new Scalar(0, 255, 0));
-                        cont++;
+                //Filtro solo los contornos que no se superponen con otro
+                ArrayList<Rect> contornosFinal = new ArrayList<>();
+                boolean bandera = false;
+                for (Rect recta : contornosFiltrados) {
+                    for (Rect c : contornosFinal) {
+                        if (c.contains(recta.tl()) || c.contains(recta.br())) {
+                            bandera = true;
+                            break;
+                        }
                     }
+                    if (!bandera) {
+                        //Agrego el contorno a la lista final de contornos
+                        contornosFinal.add(recta);
+                        //Guardo la imagen en la carpeta
+                        this.guardarImagen(new Mat(imagen, recta), contornosFinal.size());
+
+                        //La marca en la imagen principal
+                        rectangle(imagen, new Point(recta.x, recta.y), new Point(recta.x + recta.width,
+                                recta.y + recta.height), new Scalar(0, 255, 0));
+                    }
+                    bandera = false;
                 }
-                SB.append("Se filtraron ").append(contornos.size() - cont).append(" contornos - ");
-                SB.append("Contornos Validos: ").append(cont);
+
+                SB.append("Contornos Validos: ").append(contornosFinal.size());
 
             } else {
                 SB.append("No se ha encontrado ningun contorno");
